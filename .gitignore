@@ -1,0 +1,10 @@
+/data/
+/demo/
+/bin/
+*.exe
+*.db
+*.db-wal
+*.db-shm
+web/node_modules/
+web/dist/*
+!web/dist/.keep
