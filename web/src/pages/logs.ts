@@ -4,7 +4,7 @@ import { Ctx, rangeParams, setParams } from '../state';
 import { Scope } from '../scope';
 import { load, pager, sheet } from '../ui';
 import { bytes, clear, h, ms, statusClass, time } from '../util';
-import { banButton } from './ip';
+import { banButton } from '../banui';
 
 function detailRow(r: LogRow, span: number) {
     const item = (k: string, v: string) => [h('dt', null, k), h('dd', null, v || '-')];

@@ -48,6 +48,8 @@ type Settings struct {
 	IgnoredLogs []string `json:"ignored_logs"`
 	// SelfHosts 是观测台自己的域名（登录时记录），自动发现时跳过，免得统计自己的访问
 	SelfHosts []string `json:"self_hosts"`
+	// BanWhitelist 是永远不允许封禁的 IP / 网段（在「封禁 IP」页编辑）
+	BanWhitelist []string `json:"ban_whitelist"`
 }
 
 // PVRules 是浏览量的排除规则。
@@ -117,4 +119,5 @@ type Ban struct {
 	Created  int64  `json:"created"`
 	Expires  int64  `json:"expires"` // 0 表示永久
 	Active   bool   `json:"active"`
+	Removed  int64  `json:"removed"` // 解封时间，0 表示还在封禁中
 }

@@ -22,9 +22,11 @@ import (
 	"time"
 
 	"liuliobs/internal/api"
+	"liuliobs/internal/ban"
 	"liuliobs/internal/classify"
 	"liuliobs/internal/ingest"
 	"liuliobs/internal/model"
+	"liuliobs/internal/panel"
 	"liuliobs/internal/store"
 	"liuliobs/web"
 )
@@ -110,12 +112,27 @@ func main() {
 	defer stop()
 	go mgr.Run(ctx)
 
+	// 封禁 IP：规则目录（容器内）+ OpenResty 看到的规则路径 + 1Panel API（可选，没配时只写文件不重载）
+	banMgr := &ban.Manager{Store: st, Dir: os.Getenv("LIULI_BAN_DIR"),
+		IncludePath: env("LIULI_BAN_INCLUDE", "/www/liuli-ban/deny.conf"),
+		Panel:       panel.New(os.Getenv("LIULI_1PANEL_URL"), os.Getenv("LIULI_1PANEL_API_KEY"), os.Getenv("LIULI_1PANEL_KEY_ID"))}
+	os.Unsetenv("LIULI_1PANEL_API_KEY") // 读完就从环境变量里拿掉，免得被子进程继承
+	if banMgr.Enabled() {
+		go banMgr.Run(ctx)
+		if banMgr.Panel == nil {
+			log.Printf("封禁 IP：没有配置 1Panel API（LIULI_1PANEL_URL / LIULI_1PANEL_API_KEY），规则只写文件、不会自动重载")
+		} else {
+			log.Printf("封禁 IP：规则写入 %s，通过 1Panel API 重载 OpenResty", banMgr.Dir)
+		}
+	}
+
 	ui, err := fs.Sub(web.Dist, "dist")
 	if err != nil {
 		log.Fatal(err)
 	}
 	a := api.New(api.Config{Mode: mode, ServerID: serverID, CookieSecure: env("LIULI_COOKIE_SECURE", "1") != "0",
 		LogRoot: env("LIULI_LOG_ROOT", "/logs")}, st, mgr, cls, ui)
+	a.Ban = banMgr
 	srv := &http.Server{Addr: listen, Handler: a.Handler(), ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout: 30 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 120 * time.Second}
 	go func() {

@@ -89,6 +89,11 @@ CREATE TABLE IF NOT EXISTS bans(
 	expires INTEGER NOT NULL DEFAULT 0, active INTEGER NOT NULL DEFAULT 1);
 `
 
+// migrations 是建表之后追加的列。
+var migrations = []string{
+	`ALTER TABLE bans ADD COLUMN removed INTEGER NOT NULL DEFAULT 0`, // 解封时间（手动解封或到期）
+}
+
 // Open 打开（必要时创建）数据库。
 func Open(path string, loc *time.Location) (*Store, error) {
 	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(10000)&_pragma=synchronous(NORMAL)" +
@@ -103,6 +108,10 @@ func Open(path string, loc *time.Location) (*Store, error) {
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("初始化数据库: %w", err)
+	}
+	// 增量迁移：列已存在时 SQLite 报错，忽略即可
+	for _, m := range migrations {
+		db.Exec(m)
 	}
 	return &Store{DB: db, Loc: loc}, nil
 }

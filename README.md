@@ -35,8 +35,9 @@
 - **URI / 来源**：Top 页面、Top URI、来源域名、搜索引擎来源
 - **状态码**：分布、趋势，点进去看明细
 - **错误日志 / 慢请求**：4xx/5xx 和慢请求明细，可按 IP、URI、蜘蛛筛选
+- **封禁 IP**：在 IP 列表、错误日志里一键封禁 / 解封，支持网段和到期自动解封、白名单，统计每个封禁 IP 被拦截的次数（生成 OpenResty deny 规则，通过 1Panel API 平滑重载）
 - 浅色 / 暗色两套主题，手机上也能看
-- 单管理员登录（bcrypt、HttpOnly Cookie、登录限流），严格的 CSP 等安全响应头，日志目录只读挂载
+- 单管理员登录（bcrypt、HttpOnly Cookie、登录限流），严格的 CSP 等安全响应头，日志目录只读挂载；容器根文件系统只读、去掉所有特权、以普通用户运行
 
 ## 截图
 
@@ -102,6 +103,13 @@ docker compose -p liuli-obs up -d --build
 | `LIULI_PORT` | `8090` | 本机监听端口（只绑 127.0.0.1） |
 | `LIULI_COOKIE_SECURE` | `1` | 登录 Cookie 只走 HTTPS；http 调试时设为 `0` |
 | `TZ` | `Asia/Shanghai` | 按哪个时区划分「今天」 |
+| `LIULI_BAN_HOST_DIR` | `/opt/1panel/www/liuli-ban` | 封禁规则目录（宿主机），要在 OpenResty 能看到的位置 |
+| `LIULI_BAN_INCLUDE` | `/www/liuli-ban/deny.conf` | OpenResty 容器里看到的规则文件路径 |
+| `LIULI_1PANEL_URL` | 空 | 1Panel 面板地址（从容器访问），例如 `https://172.18.0.1:39541` |
+| `LIULI_1PANEL_API_KEY` | 空 | 1Panel API 密钥，用于封禁后重载 OpenResty。不填则封禁只写文件 |
+| `LIULI_IPV4` | 空 | 观测台在 1panel-network 里的固定 IP，给 API 密钥的 IP 白名单用 |
+
+封禁 IP 的配置步骤和安全说明见 [部署说明 · 封禁 IP](部署说明.md#封禁-ip可选)。
 
 统计规则（PV 排除规则、明细保留天数、慢请求阈值、真实 IP 取法、自动添加站点）在网页「设置」里改。
 
@@ -178,7 +186,7 @@ docs/              原始需求文档、截图
 
 ## 路线图
 
-- [ ] 封禁 IP：IP 列表、错误日志里一键封禁 / 解封，到期自动解封（界面和接口已预留）
+- [x] 封禁 IP：一键封禁 / 解封、网段、到期自动解封、白名单
 - [ ] 告警：5xx 突增、流量暴涨、疑似 CC 推送到 Telegram / 企业微信
 - [ ] 自动封禁（CC 阈值 + 白名单）
 - [ ] 全屏大屏

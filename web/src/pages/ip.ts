@@ -3,6 +3,7 @@ import { Ctx, go, rangeParams, setParams } from '../state';
 import { Scope } from '../scope';
 import { barCell, hbar, load, rank, sheet, table } from '../ui';
 import { ago, bytes, h, num } from '../util';
+import { banButton } from '../banui';
 
 function region(extra = ''): { place: string; isp: string } {
     const [country, prov, city, isp] = extra.split('|');
@@ -10,11 +11,6 @@ function region(extra = ''): { place: string; isp: string } {
     if (country === '中国') place = [prov, city && city !== prov ? city : ''].filter(Boolean).join(' ') || '中国';
     else if (city) place = `${country} ${city}`;
     return { place, isp: isp || '' };
-}
-
-// 第二版的封禁按钮：位置先占好
-export function banButton(ip: string) {
-    return h('button', { class: 'btn sm', disabled: true, title: `封禁 ${ip}：第二版提供`, onclick: (e: Event) => e.stopPropagation() }, '封禁');
 }
 
 export const ipPage = {

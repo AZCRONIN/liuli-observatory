@@ -1,8 +1,8 @@
 # 琉璃观测台 · docker compose / 1Panel「容器 → 编排」
 #
-# 个性化配置（管理员密码、日志目录等）都写在同目录的 .env 里，不用改这个文件：
-#   cp .env.example .env   然后按注释修改
-# 这样以后 git pull 升级不会和你的配置冲突，密码也不会被提交到仓库。
+# 个性化配置（管理员密码、日志目录、1Panel API 密钥等）都写在同目录的 .env 里，不用改这个文件：
+#   cp .env.example .env && chmod 600 .env   然后按注释修改
+# 这样以后 git pull 升级不会和你的配置冲突，密码和密钥也不会被提交到仓库。
 services:
   liuli-obs:
     # 镜像从源码构建。不要加 image 字段——1Panel 创建编排时会拿镜像名去仓库拉取，
@@ -21,14 +21,33 @@ services:
       LIULI_RESET_PASSWORD: ${LIULI_RESET_PASSWORD:-0}
       LIULI_SITES: ${LIULI_SITES:-}
       LIULI_COOKIE_SECURE: ${LIULI_COOKIE_SECURE:-1}
+      # 封禁 IP：规则写到容器内 /ban（即宿主机 LIULI_BAN_HOST_DIR），OpenResty 从 LIULI_BAN_INCLUDE 读取
+      LIULI_BAN_DIR: /ban
+      LIULI_BAN_INCLUDE: ${LIULI_BAN_INCLUDE:-/www/liuli-ban/deny.conf}
+      LIULI_1PANEL_URL: ${LIULI_1PANEL_URL:-}
+      LIULI_1PANEL_API_KEY: ${LIULI_1PANEL_API_KEY:-}
+      LIULI_1PANEL_KEY_ID: ${LIULI_1PANEL_KEY_ID:-}
       GOMEMLIMIT: 80MiB
     volumes:
       # 网站日志目录（里面是 <域名>/log/access.log），只读挂载
       - ${LIULI_LOGS_DIR:-/opt/1panel/www/sites}:/logs:ro
+      # 封禁规则目录：观测台唯一可写的宿主机目录，只放 deny.conf
+      - ${LIULI_BAN_HOST_DIR:-/opt/1panel/www/liuli-ban}:/ban
       # 数据库（统计数据、设置、账号）
       - liuli-data:/data
     networks:
-      - 1panel-network
+      1panel-network:
+        # 固定 IP，方便在 1Panel API 密钥的 IP 白名单里只放行观测台。留空则自动分配
+        ipv4_address: ${LIULI_IPV4:-}
+    # ---- 加固：根文件系统只读、去掉所有特权、禁止提权、限制进程数 ----
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 200
     mem_limit: 256m
     logging:
       driver: json-file

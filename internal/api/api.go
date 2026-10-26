@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"liuliobs/internal/ban"
 	"liuliobs/internal/classify"
 	"liuliobs/internal/ingest"
 	"liuliobs/internal/model"
@@ -34,6 +35,7 @@ type API struct {
 	Store *store.Store
 	Mgr   *ingest.Manager
 	Class *classify.Classifier
+	Ban   *ban.Manager
 	UI    fs.FS
 	lim   *limiter
 }
@@ -68,10 +70,12 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("DELETE /api/sites", auth(a.deleteSite))
 	mux.Handle("POST /api/reclassify", auth(a.reclassify))
 
-	// 第二版：封禁 IP。接口先占位，界面上的按钮会提示「第二版提供」
-	mux.Handle("GET /api/bans", auth(a.notYet))
-	mux.Handle("POST /api/bans", auth(a.notYet))
-	mux.Handle("DELETE /api/bans", auth(a.notYet))
+	// 封禁 IP：写 deny 规则文件 + 通过 1Panel API 重载 OpenResty
+	mux.Handle("GET /api/bans", auth(a.banList))
+	mux.Handle("POST /api/bans", auth(a.banAdd))
+	mux.Handle("DELETE /api/bans", auth(a.banRemove))
+	mux.Handle("POST /api/bans/sync", auth(a.banSync))
+	mux.Handle("PUT /api/bans/whitelist", auth(a.banWhitelist))
 	// 多台模式：Agent → Hub 推送（Bearer Token 鉴权，按 (server_id, site, minute) 幂等），第二版实现
 	mux.HandleFunc("POST /api/push", a.notYet)
 
@@ -610,7 +614,7 @@ func (a *API) putSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	old := a.Store.Settings()
 	// 这两项由程序维护，设置页提交的内容里没有
-	st.IgnoredLogs, st.SelfHosts = old.IgnoredLogs, old.SelfHosts
+	st.IgnoredLogs, st.SelfHosts, st.BanWhitelist = old.IgnoredLogs, old.SelfHosts, old.BanWhitelist
 	if err := a.Store.SaveSettings(st); err != nil {
 		writeErr(w, 500, err.Error())
 		return

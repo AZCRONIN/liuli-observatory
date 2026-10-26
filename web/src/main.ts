@@ -38,7 +38,7 @@ const pages: Record<string, PageDef> = {
     status: { ...statusPage, icon: 'status' },
     errors: { ...errorsPage, icon: 'errors' },
     slow: { ...slowPage, icon: 'slow' },
-    ban: { ...banPage, icon: 'ban', tag: '第二版' },
+    ban: { ...banPage, icon: 'ban' },
     settings: { ...settingsPage, icon: 'settings' },
 };
 const navOrder = ['overview', 'sites', 'ip', 'client', 'spider', 'uri', 'status', 'errors', 'slow', '-', 'ban', 'settings'];
