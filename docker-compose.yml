@@ -1,5 +1,5 @@
 # 琉璃观测台 · 1Panel「容器 → 编排」使用
-# 部署前只需要改标了【改】的三处，详见《部署说明.md》
+# 部署前只需要改标了【改】的两处，详见《部署说明.md》
 services:
   liuli-obs:
     build: .
@@ -23,7 +23,7 @@ services:
       LIULI_COOKIE_SECURE: "1"
       GOMEMLIMIT: 80MiB
     volumes:
-      # 【改】1Panel 网站目录（里面是 <域名>/log/access.log），只读挂载
+      # 1Panel 网站目录（里面是 <域名>/log/access.log），只读挂载。站长的服务器已确认是这个路径
       - /opt/1panel/www/sites:/logs:ro
       # 数据库（统计数据、设置、账号）
       - liuli-data:/data
