@@ -10,6 +10,7 @@ interface Settings {
     agg_retention_days: number;
     slow_threshold_ms: number;
     ip_source: string;
+    auto_add_sites: boolean;
 }
 interface Status {
     site: string;
@@ -89,7 +90,7 @@ export const settingsPage = {
                     title: '', cls: 'r', get: (x) => h('span', { style: { display: 'inline-flex', gap: '6px' } },
                         h('button', { class: 'btn sm', onclick: async () => { await api.post('/api/sites', { ...x, enabled: !x.enabled }); toast(x.enabled ? '已停用' : '已启用'); sitesChanged(); reload(); } }, x.enabled ? '停用' : '启用'),
                         h('button', { class: 'btn sm ghost', onclick: async () => {
-                            if (!confirm(`删除站点 ${x.site} 的配置？已统计的数据会保留到过期。`)) return;
+                            if (!confirm(`删除站点 ${x.site} 的配置？已统计的数据会保留到过期，自动发现也不会再把它加回来。`)) return;
                             await api.del('/api/sites', { site: x.site, server: x.server_id });
                             toast('已删除');
                             sitesChanged();
@@ -136,6 +137,7 @@ export const settingsPage = {
             const detail = nIn(s.detail_retention_days, 1, 90);
             const agg = nIn(s.agg_retention_days, 30, 3650);
             const slow = nIn(s.slow_threshold_ms, 10, 600000);
+            const autoAdd = h('input', { type: 'checkbox', checked: s.auto_add_sites });
             const ipSrc = h('select', null,
                 [['remote_addr', '直接连接的 IP（$remote_addr，没套 CDN 时用这个）'], ['cf', 'Cloudflare 的 CF-Connecting-IP'], ['x_real_ip', 'X-Real-IP 请求头'], ['xff', 'X-Forwarded-For 第一个 IP']]
                     .map(([v, l]) => h('option', { value: v, selected: v === s.ip_source }, l)));
@@ -157,7 +159,7 @@ export const settingsPage = {
                 const body: Settings = {
                     pv: { static_ext: parse(ext.value), exclude_prefixes: parse(pref.value), exclude_paths: parse(paths.value) },
                     detail_retention_days: Number(detail.value), agg_retention_days: Number(agg.value),
-                    slow_threshold_ms: Number(slow.value), ip_source: ipSrc.value,
+                    slow_threshold_ms: Number(slow.value), ip_source: ipSrc.value, auto_add_sites: autoAdd.checked,
                 };
                 try {
                     const res = await api.put<{ pv_changed: boolean }>('/api/settings', body);
@@ -172,6 +174,8 @@ export const settingsPage = {
                 row('静态资源扩展名', ext, '这些扩展名的请求不算浏览量。用空格或逗号分隔。'),
                 row('排除的路径前缀', pref, '以这些开头的路径不算浏览量，例如接口 /api/。每行一个。'),
                 row('排除的路径', paths, '精确匹配，例如 /robots.txt。每行一个。'),
+                row('自动添加站点', h('label', { class: 'radios' }, autoAdd, '日志目录里出现新网站的 access.log 时自动开始统计'),
+                    '每 30 秒检查一次。手动删除过的站点和观测台自己的域名不会被自动加回来。'),
                 row('真实访客 IP', ipSrc, '没套 Cloudflare 时保持默认，否则别人可以伪造请求头冒充任意 IP。'),
                 row('明细保留', h('span', { class: 'field' }, detail, '天'), '明细用于错误日志、慢请求和按分钟的趋势。'),
                 row('汇总保留', h('span', { class: 'field' }, agg, '天'), '按小时 / 按天的汇总和排行，用于更长时间的查询。'),

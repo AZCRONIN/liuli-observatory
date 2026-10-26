@@ -5,9 +5,13 @@ package ingest
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"log"
 	"os"
+	"path/filepath"
+	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -46,6 +50,7 @@ type Manager struct {
 	Store    *store.Store
 	Class    *classify.Classifier
 	ServerID string
+	LogRoot  string // 日志挂载根目录，用于自动发现站点
 
 	mu     sync.Mutex
 	tails  map[string]*siteTail
@@ -101,10 +106,11 @@ func (m *Manager) Status() []SiteStatus {
 
 // Run 运行采集循环，直到 ctx 结束。
 func (m *Manager) Run(ctx context.Context) {
+	m.autoAdd()
 	m.syncSites()
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
-	lastRollup, lastClean := time.Time{}, time.Now()
+	lastRollup, lastClean, lastDiscover := time.Time{}, time.Now(), time.Now()
 	for {
 		select {
 		case <-ctx.Done():
@@ -126,6 +132,12 @@ func (m *Manager) Run(ctx context.Context) {
 				}
 				lastRollup = time.Now()
 			}
+			if time.Since(lastDiscover) >= 30*time.Second {
+				if m.autoAdd() {
+					m.syncSites()
+				}
+				lastDiscover = time.Now()
+			}
 			if time.Since(lastClean) >= time.Hour {
 				if err := m.Store.Cleanup(time.Now(), m.Store.Settings()); err != nil {
 					log.Printf("清理过期数据失败: %v", err)
@@ -134,6 +146,78 @@ func (m *Manager) Run(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// Discovered 是在日志目录里发现的一个访问日志。
+type Discovered struct {
+	Site string `json:"site"`
+	Path string `json:"path"`
+}
+
+// Discover 在日志挂载目录下找 access.log，按 1Panel 的目录结构（<域名>/log/access.log）猜测站点名。
+func Discover(root string) []Discovered {
+	out := []Discovered{}
+	if root == "" {
+		return out
+	}
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return out
+	}
+	filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if rel, _ := filepath.Rel(root, p); strings.Count(rel, string(filepath.Separator)) >= 4 {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.Name() != "access.log" {
+			return nil
+		}
+		dir := filepath.Dir(p)
+		site := filepath.Base(dir)
+		if site == "log" || site == "logs" {
+			site = filepath.Base(filepath.Dir(dir))
+		}
+		out = append(out, Discovered{Site: strings.ToLower(site), Path: filepath.ToSlash(p)})
+		return nil
+	})
+	return out
+}
+
+// autoAdd 把新发现的日志自动添加为站点，返回是否有新增。
+// 跳过：已配置的路径或站点名、手动删除过的路径、观测台自己的域名。
+func (m *Manager) autoAdd() bool {
+	st := m.Store.Settings()
+	if !st.AutoAddSites || m.LogRoot == "" {
+		return false
+	}
+	sites, err := m.Store.Sites("")
+	if err != nil {
+		return false
+	}
+	names, paths := map[string]bool{}, map[string]bool{}
+	for _, s := range sites {
+		names[s.Site] = true
+		paths[s.LogPath] = true
+	}
+	added := false
+	for _, d := range Discover(m.LogRoot) {
+		if names[d.Site] || paths[d.Path] || slices.Contains(st.IgnoredLogs, d.Path) || slices.Contains(st.SelfHosts, d.Site) {
+			continue
+		}
+		if err := m.Store.UpsertSite(model.Site{ServerID: m.ServerID, Site: d.Site, LogPath: d.Path, Enabled: true}); err != nil {
+			log.Printf("自动添加站点 %s 失败: %v", d.Site, err)
+			continue
+		}
+		names[d.Site] = true
+		log.Printf("自动发现并添加站点 %s ← %s", d.Site, d.Path)
+		added = true
+	}
+	return added
 }
 
 // syncSites 按数据库里的站点配置增删 tailer。

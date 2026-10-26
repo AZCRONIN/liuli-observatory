@@ -421,6 +421,23 @@ func (s *Store) DimSeries(f Filter, d string, gran int64, now time.Time) (bucket
 	return
 }
 
+// FirstTS 返回站点最早一条数据的时间（优先看保留 1 年的小时汇总），没有数据时返回 0。
+func (s *Store) FirstTS(serverID, site string) int64 {
+	cond := ` WHERE site=?`
+	args := []any{site}
+	if serverID != "" {
+		cond += ` AND server_id=?`
+		args = append(args, serverID)
+	}
+	var ts int64
+	s.DB.QueryRow(`SELECT COALESCE(MIN(ts),0) FROM agg_hour`+cond, args...).Scan(&ts)
+	if ts == 0 {
+		// 刚添加还没汇总时，退回明细
+		s.DB.QueryRow(`SELECT COALESCE(MIN(ts),0) FROM req`+cond, args...).Scan(&ts)
+	}
+	return ts
+}
+
 // ---- 实时 ----
 
 // Active 返回最近 10 分钟的去重访客数，以及每分钟的去重访客数（共 10 个桶）。

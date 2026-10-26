@@ -105,6 +105,7 @@ func main() {
 	cls := classify.New(geo, settings.PV)
 
 	mgr := ingest.New(st, cls, serverID)
+	mgr.LogRoot = env("LIULI_LOG_ROOT", "/logs")
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go mgr.Run(ctx)

@@ -3,7 +3,7 @@ import { areaGradient, base, cssVar, merge, statusColor } from '../charts';
 import { Ctx, rangeParams, save, store } from '../state';
 import { Scope } from '../scope';
 import { barCell, empty, load, rank, sheet, table } from '../ui';
-import { bytes, bytesParts, esc, h, hm, md, ms, num, tip } from '../util';
+import { bytes, bytesParts, esc, h, hm, md, ms, num, tip, time } from '../util';
 
 // 指标口径：和需求说明第 5 节一致，问号提示里写清楚
 export const METRIC_TIPS = {
@@ -62,12 +62,15 @@ export const overview = {
             } catch { /* 下次再试 */ }
         };
         const loadCards = () =>
-            load(metrics, api.get<{ cur: Totals; cmp: Totals; cmp_label: string }>('/api/overview', rp), (r) =>
+            load(metrics, api.get<{ cur: Totals; cmp: Totals; cmp_label: string; cmp_partial: boolean; first_ts: number }>('/api/overview', rp), (r) =>
                 METRICS.map(([k, label]) =>
                     h('div', { class: 'metric' },
                         h('div', { class: 'label' }, label, tip((METRIC_TIPS as any)[k])),
                         h('div', { class: 'value num' }, metricValue(k, r.cur)),
-                        h('div', { class: 'cmp num', title: r.cmp_label }, `${r.cmp_label} ${fmtMetric(k, r.cmp[k])}`, delta(r.cur[k], r.cmp[k])))));
+                        r.cmp_partial
+                            // 站点中途才开始统计，对比时段开头没有数据，不显示涨幅
+                            ? h('div', { class: 'cmp', title: (r.first_ts ? `这个站点从 ${time(r.first_ts)} 开始有数据，` : '') + `${r.cmp_label}不完整，不显示涨幅` }, '对比数据不完整')
+                            : h('div', { class: 'cmp num', title: r.cmp_label }, `${r.cmp_label} ${fmtMetric(k, r.cmp[k])}`, delta(r.cur[k], r.cmp[k])))));
 
         // ---- 趋势 ----
         let metric = store<MetricKey>('trend.metric', 'pv');
@@ -98,7 +101,7 @@ export const overview = {
         const trend = h('section', { class: 'sheet', style: { marginBottom: '16px' } },
             h('div', { class: 'sheet-head' }, h('h2', null, '趋势'), ...trendHead), chartEl);
 
-        let trendData: { gran: number; now: number; cur: Point[]; prev_day?: Point[]; prev_week?: Point[] } | null = null;
+        let trendData: { gran: number; now: number; first_ts: number; cur: Point[]; prev_day?: Point[]; prev_week?: Point[] } | null = null;
         const loadTrend = async () => {
             const compare = singleDay ? [cmpDay && 'day', cmpWeek && 'week'].filter(Boolean).join(',') : '';
             trend.classList.add('loading');
@@ -125,10 +128,12 @@ export const overview = {
                 name, type: 'line', data, smooth: 0.35, showSymbol: data.length <= 48, symbolSize: 5,
                 lineStyle: { width: 2, color }, itemStyle: { color }, emphasis: { focus: 'none' }, ...opts,
             });
-            if (d.prev_week) series.push(line('上周同期', d.prev_week.map(val), c2, { lineStyle: { width: 1.4, color: c2, type: 'dashed' }, showSymbol: false }));
-            if (d.prev_day) series.push(line('前一天', d.prev_day.map(val), c1, { lineStyle: { width: 1.4, color: c1, type: 'dashed' }, areaStyle: { color: areaGradient(c1, 0.1) }, showSymbol: false }));
+            // 站点开始统计之前的时段不画（画成 0 会让人以为那时没人访问）
+            const known = (p: Point) => (d.first_ts && p.ts + g <= d.first_ts ? null : val(p));
+            if (d.prev_week) series.push(line('上周同期', d.prev_week.map(known), c2, { lineStyle: { width: 1.4, color: c2, type: 'dashed' }, showSymbol: false }));
+            if (d.prev_day) series.push(line('前一天', d.prev_day.map(known), c1, { lineStyle: { width: 1.4, color: c1, type: 'dashed' }, areaStyle: { color: areaGradient(c1, 0.1) }, showSymbol: false }));
             // 今天还没到的时段不画
-            const cur = d.cur.map((p) => (p.ts > d.now ? null : val(p)));
+            const cur = d.cur.map((p) => (p.ts > d.now ? null : known(p)));
             series.push(line(METRICS.find((m) => m[0] === metric)![1], cur, main, { areaStyle: { color: areaGradient(main, 0.3) }, z: 3 }));
             const fmt = (v: number) => (metric === 'bytes' ? bytes(v, 1) : num(v));
             chart.setOption(merge(base(), {

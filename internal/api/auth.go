@@ -167,6 +167,7 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.lim.success(ip)
+	a.rememberSelfHost(r)
 	b := make([]byte, 32)
 	rand.Read(b)
 	tok := base64.RawURLEncoding.EncodeToString(b)
@@ -183,6 +184,25 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: tok, Path: "/", HttpOnly: true, Secure: a.Cfg.CookieSecure,
 		SameSite: http.SameSiteStrictMode, Expires: now.Add(sessionTTL)})
 	writeJSON(w, map[string]any{"username": in.Username})
+}
+
+// rememberSelfHost 记下观测台自己的域名（经反代访问时的 Host），自动发现站点时跳过它。
+func (a *API) rememberSelfHost(r *http.Request) {
+	host := strings.ToLower(r.Host)
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	if host == "" || host == "localhost" || net.ParseIP(host) != nil {
+		return
+	}
+	st := a.Store.Settings()
+	for _, x := range st.SelfHosts {
+		if x == host {
+			return
+		}
+	}
+	st.SelfHosts = append(st.SelfHosts, host)
+	a.Store.SaveSettings(st)
 }
 
 func (a *API) logout(w http.ResponseWriter, r *http.Request) {

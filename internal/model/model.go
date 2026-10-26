@@ -41,6 +41,13 @@ type Settings struct {
 	SlowThresholdMs     int     `json:"slow_threshold_ms"`
 	// IPSource 决定真实访客 IP 的取法：remote_addr / cf / x_real_ip / xff
 	IPSource string `json:"ip_source"`
+	// AutoAddSites 为 true 时，日志目录下新出现的 access.log 会自动添加为站点
+	AutoAddSites bool `json:"auto_add_sites"`
+	// 以下两项由程序维护，设置页不直接编辑：
+	// IgnoredLogs 是手动删除过的日志路径，自动发现时跳过，避免删了又加回来
+	IgnoredLogs []string `json:"ignored_logs"`
+	// SelfHosts 是观测台自己的域名（登录时记录），自动发现时跳过，免得统计自己的访问
+	SelfHosts []string `json:"self_hosts"`
 }
 
 // PVRules 是浏览量的排除规则。
@@ -68,6 +75,7 @@ func DefaultSettings() Settings {
 		AggRetentionDays:    365,
 		SlowThresholdMs:     1000,
 		IPSource:            "remote_addr",
+		AutoAddSites:        true,
 	}
 }
 

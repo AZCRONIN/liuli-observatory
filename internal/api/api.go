@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -258,8 +259,11 @@ func (a *API) overview(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err.Error())
 		return
 	}
+	// 站点是中途才开始统计的：对比时段开头没有数据，涨幅没有意义
+	first := a.Store.FirstTS(sp.F.ServerID, sp.F.Site)
 	writeJSON(w, map[string]any{"label": sp.Label, "cmp_label": sp.CmpLabel, "cur": cur, "cmp": cmp,
-		"from": sp.F.From, "to": sp.F.To, "multi_day": sp.F.To-sp.F.From > 86400+3600})
+		"from": sp.F.From, "to": sp.F.To, "multi_day": sp.F.To-sp.F.From > 86400+3600, "first_ts": first,
+		"cmp_partial": first == 0 || first > sp.Cmp.From+3600, "cur_partial": first > sp.F.From+3600})
 }
 
 func (a *API) trend(w http.ResponseWriter, r *http.Request) {
@@ -303,7 +307,7 @@ func (a *API) trend(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err.Error())
 		return
 	}
-	out := map[string]any{"gran": gran, "now": time.Now().Unix(), "cur": cur}
+	out := map[string]any{"gran": gran, "now": time.Now().Unix(), "cur": cur, "first_ts": s.FirstTS(f.ServerID, f.Site)}
 	for _, c := range strings.Split(r.URL.Query().Get("compare"), ",") {
 		var days int
 		switch c {
@@ -561,46 +565,6 @@ func (a *API) logs(w http.ResponseWriter, r *http.Request) {
 
 // ---- 设置 ----
 
-type discovered struct {
-	Site string `json:"site"`
-	Path string `json:"path"`
-}
-
-// discover 在日志挂载目录下找 access.log，按 1Panel 的目录结构猜测站点名。
-func (a *API) discover() []discovered {
-	out := []discovered{}
-	if a.Cfg.LogRoot == "" {
-		return out
-	}
-	root, err := filepath.Abs(a.Cfg.LogRoot)
-	if err != nil {
-		return out
-	}
-	filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			if rel, _ := filepath.Rel(root, p); strings.Count(rel, string(filepath.Separator)) >= 4 {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if d.Name() != "access.log" {
-			return nil
-		}
-		// .../<域名>/log/access.log
-		dir := filepath.Dir(p)
-		site := filepath.Base(dir)
-		if site == "log" || site == "logs" {
-			site = filepath.Base(filepath.Dir(dir))
-		}
-		out = append(out, discovered{Site: site, Path: filepath.ToSlash(p)})
-		return nil
-	})
-	return out
-}
-
 func (a *API) getSettings(w http.ResponseWriter, r *http.Request) {
 	sites, err := a.Store.Sites("")
 	if err != nil {
@@ -614,7 +578,7 @@ func (a *API) getSettings(w http.ResponseWriter, r *http.Request) {
 		"settings":  a.Store.Settings(),
 		"sites":     sites,
 		"status":    a.Mgr.Status(),
-		"discover":  a.discover(),
+		"discover":  ingest.Discover(a.Cfg.LogRoot),
 		"server_id": a.Cfg.ServerID,
 		"geo":       a.Class.Geo.Loaded(),
 		"log_root":  a.Cfg.LogRoot,
@@ -645,6 +609,8 @@ func (a *API) putSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	old := a.Store.Settings()
+	// 这两项由程序维护，设置页提交的内容里没有
+	st.IgnoredLogs, st.SelfHosts = old.IgnoredLogs, old.SelfHosts
 	if err := a.Store.SaveSettings(st); err != nil {
 		writeErr(w, 500, err.Error())
 		return
@@ -705,6 +671,11 @@ func (a *API) upsertSite(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err.Error())
 		return
 	}
+	// 手动加回来的，不再算作「删除过」
+	if st := a.Store.Settings(); slices.Contains(st.IgnoredLogs, x.LogPath) {
+		st.IgnoredLogs = slices.DeleteFunc(st.IgnoredLogs, func(p string) bool { return p == x.LogPath })
+		a.Store.SaveSettings(st)
+	}
 	a.Mgr.Reload()
 	_, statErr := os.Stat(x.LogPath)
 	writeJSON(w, map[string]any{"ok": true, "exists": statErr == nil})
@@ -716,9 +687,22 @@ func (a *API) deleteSite(w http.ResponseWriter, r *http.Request) {
 	if srv == "" {
 		srv = a.Cfg.ServerID
 	}
+	var path string
+	if sites, err := a.Store.Sites(srv); err == nil {
+		for _, s := range sites {
+			if s.Site == q.Get("site") {
+				path = s.LogPath
+			}
+		}
+	}
 	if err := a.Store.DeleteSite(srv, q.Get("site")); err != nil {
 		writeErr(w, 500, err.Error())
 		return
+	}
+	// 记下来，自动发现时不再把它加回来
+	if st := a.Store.Settings(); path != "" && !slices.Contains(st.IgnoredLogs, path) {
+		st.IgnoredLogs = append(st.IgnoredLogs, path)
+		a.Store.SaveSettings(st)
 	}
 	a.Mgr.Reload()
 	writeJSON(w, map[string]any{"ok": true})
