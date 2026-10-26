@@ -68,12 +68,7 @@ func main() {
 			if end.After(now) {
 				end = now
 			}
-			ls := genWindow(h, end)
-			sort.Slice(ls, func(i, j int) bool { return ls[i].t.Before(ls[j].t) })
-			for _, l := range ls {
-				write(w, l)
-			}
-			total += len(ls)
+			total += flushUntil(w, genWindow(h, end), end)
 		}
 		w.Flush()
 		log.Printf("已写入 %d 行历史日志到 %s", total, *out)
@@ -85,11 +80,7 @@ func main() {
 	last := time.Now()
 	for range time.Tick(time.Second) {
 		now := time.Now()
-		ls := genWindow(last, now)
-		sort.Slice(ls, func(i, j int) bool { return ls[i].t.Before(ls[j].t) })
-		for _, l := range ls {
-			write(w, l)
-		}
+		flushUntil(w, genWindow(last, now), now)
 		w.Flush()
 		last = now
 	}
@@ -105,6 +96,21 @@ func hourWeight(t time.Time) float64 {
 	noon := math.Exp(-math.Pow(h-12, 2) / 2)
 	night := math.Exp(-math.Pow(h-20.5, 2) / 4)
 	return base*0.6 + noon*0.35 + night*0.9
+}
+
+// pending 是会话里落在后面时间窗口的请求（例如会话跨了整点或跨秒），留到对应窗口再写，保证日志按时间递增
+var pending []line
+
+func flushUntil(w *bufio.Writer, ls []line, to time.Time) int {
+	pending = append(pending, ls...)
+	sort.Slice(pending, func(i, j int) bool { return pending[i].t.Before(pending[j].t) })
+	n := 0
+	for n < len(pending) && pending[n].t.Before(to) {
+		write(w, pending[n])
+		n++
+	}
+	pending = append(pending[:0:0], pending[n:]...)
+	return n
 }
 
 // genWindow 生成 [from, to) 时间段内的日志：按会话生成，蜘蛛和扫描器单独生成。
@@ -126,14 +132,7 @@ func genWindow(from, to time.Time) []line {
 	for i, n := 0, poisson(expectReq*0.03); i < n; i++ {
 		ls = append(ls, scanHit(randTime(from, to)))
 	}
-	// 会话里的后续请求可能超出窗口，截掉，保证日志按时间递增
-	kept := ls[:0]
-	for _, l := range ls {
-		if l.t.Before(to) {
-			kept = append(kept, l)
-		}
-	}
-	return kept
+	return ls
 }
 
 func randTime(from, to time.Time) time.Time {

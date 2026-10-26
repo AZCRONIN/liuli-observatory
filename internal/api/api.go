@@ -572,7 +572,10 @@ func (a *API) discover() []discovered {
 	if a.Cfg.LogRoot == "" {
 		return out
 	}
-	root := filepath.Clean(a.Cfg.LogRoot)
+	root, err := filepath.Abs(a.Cfg.LogRoot)
+	if err != nil {
+		return out
+	}
 	filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
