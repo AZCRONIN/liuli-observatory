@@ -1,31 +1,30 @@
-# 琉璃观测台 · 1Panel「容器 → 编排」使用
-# 部署前只需要改标了【改】的两处，详见《部署说明.md》
+# 琉璃观测台 · docker compose / 1Panel「容器 → 编排」
+#
+# 个性化配置（管理员密码、日志目录等）都写在同目录的 .env 里，不用改这个文件：
+#   cp .env.example .env   然后按注释修改
+# 这样以后 git pull 升级不会和你的配置冲突，密码也不会被提交到仓库。
 services:
   liuli-obs:
-    # 镜像在服务器上从源码构建。不要加 image 字段——1Panel 创建编排时会拿镜像名去仓库拉取，
+    # 镜像从源码构建。不要加 image 字段——1Panel 创建编排时会拿镜像名去仓库拉取，
     # 本地构建的镜像仓库里没有，会报「拉取镜像失败」
     build: .
     # 自建镜像必须写这一行，否则 compose 会去镜像仓库拉取而失败
     pull_policy: build
     container_name: liuli-obs
     restart: unless-stopped
-    # 只绑本机，由 OpenResty 反代并配 HTTPS
+    # 只绑本机，由 OpenResty / Nginx 反代并配 HTTPS
     ports:
-      - "127.0.0.1:8090:8090"
+      - "127.0.0.1:${LIULI_PORT:-8090}:8090"
     environment:
-      TZ: Asia/Shanghai
-      # 【改】首次启动时的管理员密码（至少 10 位）。启动后在网页「设置」里改密码即可，这里不用再动
-      LIULI_ADMIN_PASSWORD: "请改成你自己的密码"
-      # 忘记密码时：把上面改成新密码、这里改成 "1"，重建容器后登录，再改回 "0"
-      LIULI_RESET_PASSWORD: "0"
-      # 【改】首次启动时导入的站点：域名=容器内日志路径，多个用分号隔开。以后在网页「设置」里增删
-      LIULI_SITES: "sosoquark.com=/logs/sosoquark.com/log/access.log"
-      # 观测台自己的会话 Cookie 只走 HTTPS；如果暂时用 http 访问调试，改成 "0"
-      LIULI_COOKIE_SECURE: "1"
+      TZ: ${TZ:-Asia/Shanghai}
+      LIULI_ADMIN_PASSWORD: ${LIULI_ADMIN_PASSWORD:-}
+      LIULI_RESET_PASSWORD: ${LIULI_RESET_PASSWORD:-0}
+      LIULI_SITES: ${LIULI_SITES:-}
+      LIULI_COOKIE_SECURE: ${LIULI_COOKIE_SECURE:-1}
       GOMEMLIMIT: 80MiB
     volumes:
-      # 1Panel 网站目录（里面是 <域名>/log/access.log），只读挂载。站长的服务器已确认是这个路径
-      - /opt/1panel/www/sites:/logs:ro
+      # 网站日志目录（里面是 <域名>/log/access.log），只读挂载
+      - ${LIULI_LOGS_DIR:-/opt/1panel/www/sites}:/logs:ro
       # 数据库（统计数据、设置、账号）
       - liuli-data:/data
     networks:
@@ -38,6 +37,7 @@ services:
         max-file: "3"
 
 networks:
+  # 1Panel 自带的外部网络。不用 1Panel 时可以先 docker network create 1panel-network，或删掉这两段
   1panel-network:
     external: true
 

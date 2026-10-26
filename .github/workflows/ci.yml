@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: 构建前端
+        working-directory: web
+        run: npm ci && npm run build
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: 检查格式
+        run: test -z "$(gofmt -l cmd internal web)"
+
+      - name: 静态检查
+        run: go vet ./...
+
+      - name: 测试（含日志切割用例）
+        run: go test ./...
+
+      - name: 构建 Docker 镜像
+        run: docker build -t liuli-obs:ci .

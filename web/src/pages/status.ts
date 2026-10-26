@@ -60,7 +60,7 @@ export const statusPage = {
                         xAxis: { data: labels },
                         series: CLASSES.map(([c, l]) => ({
                             name: l, type: 'line', stack: 'all', smooth: 0.3, showSymbol: false,
-                            data: agg[c].map((v, i) => (d.buckets[i] > d.now ? null : v)),
+                            data: agg[c].map((v, i) => (d.buckets[i] > d.now || (d.gran < 86400 && d.buckets[i] + d.gran > d.now) ? null : v)),
                             lineStyle: { width: 1.4, color: statusColor(c) }, itemStyle: { color: statusColor(c) },
                             areaStyle: { color: areaGradient(statusColor(c), 0.35) },
                         })),

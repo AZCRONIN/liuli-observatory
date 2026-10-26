@@ -72,7 +72,7 @@ export const spiderPage = {
                         tooltip: { trigger: 'axis', formatter: (ps: any[]) => `${esc(ps[0].axisValue)}<br/>` + ps.filter((p) => p.value !== null).map((p) => `<span class="legend-dot" style="background:${p.color}"></span>${esc(p.seriesName)}　<b>${num(p.value)}</b>`).join('<br/>') },
                         xAxis: { data: labels },
                         series: top.map(([k, v], i) => ({
-                            name: k, type: 'line', smooth: 0.3, showSymbol: false, data: v.map((x, j) => (d.buckets[j] > d.now ? null : x)),
+                            name: k, type: 'line', smooth: 0.3, showSymbol: false, data: v.map((x, j) => (d.buckets[j] > d.now || (d.gran < 86400 && d.buckets[j] + d.gran > d.now) ? null : x)),
                             lineStyle: { width: 1.8, color: pal[i % pal.length] }, itemStyle: { color: pal[i % pal.length] },
                             areaStyle: i === 0 ? { color: areaGradient(pal[0], 0.18) } : undefined,
                         })),

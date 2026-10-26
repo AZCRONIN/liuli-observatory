@@ -1,84 +1,198 @@
+<div align="center">
+
+<img src="web/public/favicon.svg" width="72" alt="">
+
 # 琉璃观测台
 
-基于 OpenResty / Nginx 访问日志的网站监控报表服务。体验对标宝塔「网站监控报表」，不依赖宝塔、不往网页里加 JS，部署在 1Panel 上，界面是琉璃风格。
+**基于 Nginx / OpenResty 访问日志的网站监控报表 · 不往网页里加任何 JS**
 
-- 部署：看 [部署说明.md](部署说明.md)
-- 需求：看 [需求说明.md](需求说明.md)
+体验对标宝塔面板的「网站监控报表」，但不依赖宝塔：一个 Go 程序、一个 SQLite 文件、一个 Docker 容器，<br>
+日常内存 15 MB 左右，适合 1Panel 用户和任何自己管 Nginx 的站长。
 
-## 功能（第一版）
+[部署说明](部署说明.md) · [截图](#截图) · [指标口径](#指标口径) · [开发](#本地开发)
 
-概览（10 分钟活跃、PV/UV/IP/请求/流量/蜘蛛、趋势含前一天和上周同期对比、性能、实时流量）、网站列表、IP/地区、访客/客户端、蜘蛛、URI/来源、状态码、错误日志、慢请求、登录、设置。浅色 / 暗色两套主题，手机可看。
+<sub>A self-hosted, log-based web analytics dashboard for Nginx / OpenResty — no tracking scripts, single Go binary + SQLite. UI in Chinese.</sub>
 
-## 本地开发
+</div>
 
-需要 Go 1.26、Node 22+。
+![概览](docs/screenshots/overview-light.webp)
+
+## 为什么做它
+
+- **JS 统计**（百度统计、Clarity、Umami 之类）要改网页，而且统计不到蜘蛛、状态码、流量、耗时；被广告拦截插件一拦就少一截。
+- **CDN 自带统计**延迟大、维度少。
+- **宝塔的网站监控报表**很好用，但它绑在宝塔上。
+
+琉璃观测台直接读服务器的访问日志：所有请求都在里面，网页一行不用改，数据只留在你自己的服务器上。
+
+## 功能
+
+- **概览**：10 分钟活跃访客、浏览量 / 访客 / IP / 请求 / 流量 / 蜘蛛，趋势图（按分钟 / 小时 / 天，可叠加前一天和上周同期），实时 QPS、响应耗时、上下行流量
+- **网站列表**：多个站点今日数据一览；新网站自动发现，加上就统计
+- **IP / 地区**：Top IP、国内到省、国外到国家（离线 IP 库 [ip2region](https://github.com/lionsoul2014/ip2region)，不联网查询）
+- **访客 / 客户端**：浏览器（含微信、QQ、夸克等内置浏览器）、操作系统、设备类型
+- **蜘蛛**：搜索引擎、AI 爬虫、SEO 工具、社交预览、脚本工具分类统计，抓取趋势和抓取最多的 URL
+- **URI / 来源**：Top 页面、Top URI、来源域名、搜索引擎来源
+- **状态码**：分布、趋势，点进去看明细
+- **错误日志 / 慢请求**：4xx/5xx 和慢请求明细，可按 IP、URI、蜘蛛筛选
+- 浅色 / 暗色两套主题，手机上也能看
+- 单管理员登录（bcrypt、HttpOnly Cookie、登录限流），严格的 CSP 等安全响应头，日志目录只读挂载
+
+## 截图
+
+| 暗色 | 手机 |
+|---|---|
+| ![暗色概览](docs/screenshots/overview-dark.webp) | <img src="docs/screenshots/mobile-light.webp" width="240"> <img src="docs/screenshots/mobile-dark.webp" width="240"> |
+
+| 蜘蛛 | IP / 地区 |
+|---|---|
+| ![蜘蛛](docs/screenshots/spider.webp) | ![IP 地区](docs/screenshots/ip.webp) |
+
+| 状态码 | 客户端 |
+|---|---|
+| ![状态码](docs/screenshots/status.webp) | ![客户端](docs/screenshots/client-dark.webp) |
+
+<details>
+<summary>登录页</summary>
+
+![登录](docs/screenshots/login.webp)
+
+</details>
+
+截图里是日志生成器造的示例数据。
+
+## 快速开始
+
+需要 Docker（含 compose 插件）。下面以 1Panel 为例，完整的图文步骤见 **[部署说明](部署说明.md)**。
+
+**1. 让 Nginx / OpenResty 输出 JSON 日志**，在 `http {}` 里加：
+
+```nginx
+log_format liuli_json escape=json '{'
+  '"t":"$time_iso8601","host":"$host","ip":"$remote_addr",'
+  '"xff":"$http_x_forwarded_for","cfip":"$http_cf_connecting_ip","xri":"$http_x_real_ip",'
+  '"m":"$request_method","uri":"$request_uri","st":$status,'
+  '"bytes":$bytes_sent,"rl":$request_length,"rt":$request_time,"urt":"$upstream_response_time",'
+  '"ref":"$http_referer","ua":"$http_user_agent","proto":"$server_protocol"'
+'}';
+```
+
+再把各站点的 `access_log ... main;` 改成 `access_log ... liuli_json;`。默认的 combined / main 格式也能读，只是没有耗时数据。
+
+**2. 部署**
 
 ```bash
-# 1. 生成示例日志（3 天历史，约每天 3 万请求）
-go run ./cmd/loggen -days 3 -per-day 30000
-
-# 2. 打包前端（嵌入二进制）
-cd web && npm install && npm run build && cd ..
-
-# 3. 启动（本地 http 调试需要关掉 Secure Cookie）
-LIULI_ADMIN_PASSWORD=本地测试密码123 LIULI_COOKIE_SECURE=0 LIULI_LOG_ROOT=demo \
-LIULI_SITES="sosoquark.com=$PWD/demo/sosoquark.com/log/access.log" go run ./cmd/liuliobs
-
-# 4. 另开一个终端持续追加实时日志
-go run ./cmd/loggen -days 0 -follow -per-day 60000
+git clone https://github.com/AZCRONIN/liuli-observatory.git /opt/liuli-obs
+cd /opt/liuli-obs && cp .env.example .env    # 填管理员密码、日志目录
+docker compose -p liuli-obs up -d --build
 ```
 
-打开 http://127.0.0.1:8090 。改前端时可以 `cd web && npm run dev`（Vite 把 `/api` 代理到 8090）。
+**3. 反代**：把 `https://stats.example.com` 反代到 `http://127.0.0.1:8090`，打开、登录（用户名 `admin`）。
 
-测试：`go test ./...`（日志切割相关的用例依赖 inode，在 Linux 上运行）。
+**升级**：`git pull && docker compose -p liuli-obs up -d --build`。
 
-## 结构
+### 配置项（`.env`）
 
-```
-cmd/liuliobs     主程序（模式：all-in-one / agent / hub）
-cmd/loggen       示例日志生成器
-internal/tail    跟读日志：inode + 偏移量 + 文件头指纹，处理改名切割和 copytruncate，确认入库后才前进
-internal/parse   解析 liuli_json 和 combined 两种格式
-internal/classify 蜘蛛识别、浏览器/系统/设备、IP 归属地（ip2region 离线库）、PV 判定
-internal/ingest  采集调度：读 → 解析 → 入库（明细、进度、待汇总标记在同一事务），定时汇总和清理
-internal/store   SQLite（WAL）：明细 req、小时/天聚合、维度日表、设置、账号、会话
-internal/api     查询接口、登录（bcrypt + HttpOnly Cookie + 限流）、安全响应头、嵌入的前端
-web/             前端（Vite + TypeScript + ECharts，无框架）
-scripts/verify.py 独立的数字核对脚本
-```
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `LIULI_ADMIN_PASSWORD` | 空 | 首次启动时管理员密码，留空则随机生成并打印在日志里 |
+| `LIULI_RESET_PASSWORD` | `0` | 设为 `1` 时用上面的密码重置管理员密码 |
+| `LIULI_LOGS_DIR` | `/opt/1panel/www/sites` | 宿主机日志目录，结构为 `<域名>/log/access.log`，只读挂载到容器 `/logs` |
+| `LIULI_SITES` | 空 | 首次启动导入的站点 `域名=容器内路径;…`，一般不用填（会自动发现） |
+| `LIULI_PORT` | `8090` | 本机监听端口（只绑 127.0.0.1） |
+| `LIULI_COOKIE_SECURE` | `1` | 登录 Cookie 只走 HTTPS；http 调试时设为 `0` |
+| `TZ` | `Asia/Shanghai` | 按哪个时区划分「今天」 |
 
-## 数据口径
+统计规则（PV 排除规则、明细保留天数、慢请求阈值、真实 IP 取法、自动添加站点）在网页「设置」里改。
 
-和需求说明第 5 节一致，界面每个指标旁的问号里也写了：
+## 指标口径
+
+界面上每个指标旁的问号里也写了。
 
 | 指标 | 口径 |
 |---|---|
 | 请求 | 所有日志行 |
 | 浏览量 PV | 非蜘蛛、2xx/3xx、GET、页面类请求（排除静态资源扩展名、`/api/` 等前缀、`/robots.txt` 等路径，可配置） |
-| 访客 UV | 当天按 (IP + UA) 去重，非蜘蛛；多天为每天之和 |
-| IP 数 | 当天去重 IP；多天为每天之和 |
-| 流量 | `bytes_sent` 之和 |
-| 蜘蛛爬虫 | UA 命中已知蜘蛛 / 机器人列表（含 AI 爬虫、SEO 工具、脚本工具、空 UA） |
+| 访客 UV | 当天按（IP + UA）去重，不含蜘蛛；多天为每天之和 |
+| IP 数 | 当天去重 IP（含蜘蛛）；多天为每天之和 |
+| 流量 | `bytes_sent` 之和（出站） |
+| 蜘蛛爬虫 | UA 命中已知蜘蛛 / 机器人列表：搜索引擎、AI 爬虫、SEO 工具、社交预览、脚本工具、空 UA |
 | 10 分钟活跃 | 最近 10 分钟去重访客 |
 
-## 存储
+想核对数字，用 [`scripts/verify.py`](scripts/verify.py)：它独立地从原始日志按同样口径算出某一天的数字，并拆解 IP 和蜘蛛的构成。
 
-- `req` 明细：保留 7 天（可配），用于明细查询、按分钟趋势、今日统计。
-- `agg_hour` / `agg_day`：从明细重算（幂等），保留 1 年。写入明细时同一事务标记 `dirty` 小时，汇总任务每 15 秒处理一次。
-- `dim_day`：每天结束后生成各维度（IP、地区、浏览器、系统、设备、蜘蛛、蜘蛛 URL、页面、URI、来源、状态码）的日表，高基数维度每天保留前 2000 名；今天的维度实时从明细算。
-- 所有表都带 `server_id` 和 `site`。
+## 工作原理
 
-## 多台服务器（第二版）
+```
+Nginx / OpenResty ──写──▶ access.log（每站点一个）
+                             │ 只读挂载，tail 跟读
+                             ▼
+          ┌──────────── 琉璃观测台（单个 Go 进程）────────────┐
+          │ 跟读：inode + 偏移量 + 文件头指纹，跟上 logrotate     │
+          │ 解析 → 识别蜘蛛 / 客户端 / 地区 / PV                  │
+          │ 明细 + 进度在同一个事务里写入 SQLite（WAL）→ 不丢不重 │
+          │ 每 15 秒把新数据汇总到小时 / 天表                     │
+          │ 查询接口 + 嵌入的网页仪表盘                           │
+          └──────────────────────────────────────────────────────┘
+```
 
-数据模型和接口已经按多台设计，第一版只交付 `all-in-one`：
+- **明细**保留 7 天（可配），用于明细查询、按分钟趋势和今天的统计。
+- **小时 / 天汇总**和**维度日表**（每个维度每天前 2000 名）保留 1 年，用于长时间段查询。
+- 所有表都带 `server_id` 和 `site`，为多台服务器汇总预留。
 
-- `agent` 模式：复用 `internal/tail` + `internal/parse` + `internal/classify`，把**已结束的分钟**的全部明细打包成 `model.PushBatch`，`POST /api/push`（`Authorization: Bearer <token>`）推给 Hub，失败重试，成功后才前进本地进度。
-- `hub` 模式：校验 Token（`servers.token_hash`，只存哈希），按 `(server_id, site, minute)` 幂等写入：先删该分钟已有明细再写入，然后标记 `dirty`，之后的汇总、查询、页面与单台完全相同。
-- 界面：顶部筛选条加「服务器」下拉（接口已支持 `server` 参数，空表示汇总）。
+## 本地开发
 
-站长的量级下全量推送明细（每天约 10 万行、压缩后几 MB）比只推聚合更简单，口径也完全一致。
+需要 Go 1.26+、Node 22+。
 
-## 第二版预留
+```bash
+# 示例日志（3 天历史，每天约 3 万请求）
+go run ./cmd/loggen -days 3 -per-day 30000
 
-- 封禁 IP：`bans` 表、`GET/POST/DELETE /api/bans` 接口（目前返回 501）、侧栏「封禁 IP」入口、IP 列表 / 错误日志 / 慢请求每行的「封禁」按钮（目前禁用）都已就位。生效方式计划为生成 deny 文件给 OpenResty `include` 后重载，重载方式需和站长确认权限后再做。
-- 告警、自动封禁、大屏、假蜘蛛识别（反向 DNS 校验）。
+# 打包前端（会嵌入二进制）
+cd web && npm install && npm run build && cd ..
+
+# 启动
+LIULI_ADMIN_PASSWORD=dev-password-123 LIULI_COOKIE_SECURE=0 LIULI_LOG_ROOT=demo go run ./cmd/liuliobs
+
+# 另开一个终端持续追加实时日志
+go run ./cmd/loggen -days 0 -follow -per-day 60000
+```
+
+打开 <http://127.0.0.1:8090>。改前端时用 `cd web && npm run dev`（Vite 把 `/api` 代理到 8090）。
+
+测试：`go test ./...`（日志切割相关的用例依赖 inode，在 Linux 上跑）。
+
+```
+cmd/liuliobs       主程序
+cmd/loggen         示例日志生成器
+internal/tail      跟读日志（断点续读、改名切割、copytruncate）
+internal/parse     解析 liuli_json 和 combined 格式
+internal/classify  蜘蛛、浏览器 / 系统 / 设备、IP 归属地、PV 判定
+internal/ingest    采集调度、站点自动发现、定时汇总和清理
+internal/store     SQLite 存储和查询
+internal/api       HTTP 接口、登录鉴权、安全响应头
+web/               前端（Vite + TypeScript + ECharts，无框架）
+scripts/verify.py  独立的数字核对脚本
+docs/              原始需求文档、截图
+```
+
+## 路线图
+
+- [ ] 封禁 IP：IP 列表、错误日志里一键封禁 / 解封，到期自动解封（界面和接口已预留）
+- [ ] 告警：5xx 突增、流量暴涨、疑似 CC 推送到 Telegram / 企业微信
+- [ ] 自动封禁（CC 阈值 + 白名单）
+- [ ] 全屏大屏
+- [ ] 多台服务器：`agent` / `hub` 模式（数据模型和推送协议已按多台设计）
+- [ ] 假蜘蛛识别（反向 DNS 校验）
+
+## 致谢与第三方
+
+- [Apache ECharts](https://echarts.apache.org/)（Apache-2.0）
+- [ip2region](https://github.com/lionsoul2014/ip2region) 离线 IP 库（Apache-2.0），构建镜像时下载
+- [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) 纯 Go 的 SQLite
+- [阿里巴巴普惠体 3.0](https://fonts.alibabagroup.com/)：阿里巴巴集团提供的免费商用字体，仓库里是切片后的 woff2，字体版权归阿里巴巴所有
+- 界面风格来自作者的另一个项目「琉璃搜索」，登录页的液态玻璃动画是同系列的「琉璃 LiuliGlass」组件
+
+## 许可
+
+[MIT](LICENSE) © AZCRONIN

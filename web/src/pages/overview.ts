@@ -133,14 +133,26 @@ export const overview = {
             if (d.prev_week) series.push(line('上周同期', d.prev_week.map(known), c2, { lineStyle: { width: 1.4, color: c2, type: 'dashed' }, showSymbol: false }));
             if (d.prev_day) series.push(line('前一天', d.prev_day.map(known), c1, { lineStyle: { width: 1.4, color: c1, type: 'dashed' }, areaStyle: { color: areaGradient(c1, 0.1) }, showSymbol: false }));
             // 今天还没到的时段不画
+            const name = METRICS.find((m) => m[0] === metric)![1];
             const cur = d.cur.map((p) => (p.ts > d.now ? null : known(p)));
-            series.push(line(METRICS.find((m) => m[0] === metric)![1], cur, main, { areaStyle: { color: areaGradient(main, 0.3) }, z: 3 }));
+            // 还没结束的那个时段（例如 22:05 时的 22 点）只统计了一部分，画成虚线，免得看起来像流量骤降
+            const live = d.cur.findIndex((p) => p.ts <= d.now && d.now < p.ts + g);
+            if (live > 0 && cur[live] !== null && cur[live - 1] !== null) {
+                const partial = cur.map((v, i) => (i === live - 1 || i === live ? v : null));
+                cur[live] = null;
+                series.push(line(`${name}（本时段进行中）`, partial, main, {
+                    lineStyle: { width: 2, color: main, type: 'dashed' }, showSymbol: true, symbol: 'emptyCircle', z: 3,
+                    tooltip: { show: true },
+                }));
+            }
+            series.push(line(name, cur, main, { areaStyle: { color: areaGradient(main, 0.3) }, z: 3 }));
             const fmt = (v: number) => (metric === 'bytes' ? bytes(v, 1) : num(v));
             chart.setOption(merge(base(), {
                 tooltip: {
                     trigger: 'axis',
                     formatter: (ps: any[]) => `<div style="margin-bottom:4px;color:${cssVar('--ink-3')}">${esc(ps[0]?.axisValue)}</div>` +
-                        ps.filter((p) => p.value !== null && p.value !== undefined).reverse()
+                        // 虚线段只在「进行中」那个点显示，前一个点和实线重复
+                        ps.filter((p) => p.value !== null && p.value !== undefined && !(p.seriesName.endsWith('进行中）') && p.dataIndex !== live)).reverse()
                             .map((p) => `<div><span class="legend-dot" style="background:${p.color}"></span>${esc(p.seriesName)}　<b>${fmt(p.value)}</b></div>`).join(''),
                 },
                 xAxis: { data: labels },

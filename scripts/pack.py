@@ -11,7 +11,7 @@ import zipfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "liuli-obs.zip")
 # 服务器上用不到的
-SKIP_PREFIX = ("参考/", "CLAUDE.md", "需求说明.md")
+SKIP_PREFIX = ("docs/", ".github/", "CLAUDE.md")
 
 
 def main():

@@ -7,3 +7,6 @@ web/dist
 *.exe
 *.db*
 参考
+docs
+.github
+.env
