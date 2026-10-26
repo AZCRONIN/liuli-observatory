@@ -8,8 +8,10 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"log"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -187,6 +189,8 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 }
 
 // rememberSelfHost 记下观测台自己的域名（经反代访问时的 Host），自动发现站点时跳过它。
+// 每次打开页面（/api/me）都会调用：升级后容器先启动、还没打开过页面时，自动发现可能已经把自己加进去了，
+// 这里顺手把它移除并记入忽略列表。
 func (a *API) rememberSelfHost(r *http.Request) {
 	host := strings.ToLower(r.Host)
 	if h, _, err := net.SplitHostPort(host); err == nil {
@@ -196,12 +200,22 @@ func (a *API) rememberSelfHost(r *http.Request) {
 		return
 	}
 	st := a.Store.Settings()
-	for _, x := range st.SelfHosts {
-		if x == host {
-			return
-		}
+	if slices.Contains(st.SelfHosts, host) {
+		return
 	}
 	st.SelfHosts = append(st.SelfHosts, host)
+	if sites, err := a.Store.Sites(""); err == nil {
+		for _, s := range sites {
+			if s.Site == host {
+				a.Store.DeleteSite(s.ServerID, s.Site)
+				if !slices.Contains(st.IgnoredLogs, s.LogPath) {
+					st.IgnoredLogs = append(st.IgnoredLogs, s.LogPath)
+				}
+				log.Printf("%s 是观测台自己的域名，不统计", host)
+				a.Mgr.Reload()
+			}
+		}
+	}
 	a.Store.SaveSettings(st)
 }
 
@@ -215,6 +229,7 @@ func (a *API) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) me(w http.ResponseWriter, r *http.Request) {
+	a.rememberSelfHost(r)
 	writeJSON(w, map[string]any{"username": r.Context().Value(ctxKey{}), "server_id": a.Cfg.ServerID, "mode": a.Cfg.Mode})
 }
 
