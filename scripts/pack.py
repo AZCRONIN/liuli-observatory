@@ -22,7 +22,15 @@ def main():
         os.remove(OUT)
     with zipfile.ZipFile(OUT, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for f in sorted(files):
-            z.write(os.path.join(ROOT, f), f)
+            with open(os.path.join(ROOT, f), "rb") as fh:
+                data = fh.read()
+            # Windows 上编辑过的文本文件统一成 LF，服务器上的脚本和配置不会带 \r
+            if b"\0" not in data:
+                data = data.replace(b"\r\n", b"\n")
+            info = zipfile.ZipInfo(f, date_time=(2026, 1, 1, 0, 0, 0))
+            info.external_attr = 0o644 << 16
+            info.compress_type = zipfile.ZIP_DEFLATED
+            z.writestr(info, data)
     print(f"已生成 {OUT}：{len(files)} 个文件，{os.path.getsize(OUT) / 1024 / 1024:.1f} MB")
 
 
