@@ -1,17 +1,18 @@
 # 琉璃观测台：三阶段构建，最终镜像只有一个静态二进制 + IP 库 + 时区数据
+# 服务器在香港：基础镜像、npm、Go 模块、IP 库都直连官方源，不用国内镜像
 
 # ---- 前端 ----
 FROM node:22-alpine AS web
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
-RUN npm ci --no-audit --no-fund
+RUN npm config set registry https://registry.npmjs.org/ && npm ci --no-audit --no-fund
 COPY web/ ./
 RUN npm run build
 
 # ---- 后端（前端打包产物嵌入二进制）----
 FROM golang:1.26-alpine AS build
 WORKDIR /src
-ENV CGO_ENABLED=0 GOFLAGS=-trimpath GOTOOLCHAIN=local
+ENV CGO_ENABLED=0 GOFLAGS=-trimpath GOTOOLCHAIN=local     GOPROXY=https://proxy.golang.org,direct GOSUMDB=sum.golang.org
 COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd ./cmd

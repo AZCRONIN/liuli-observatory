@@ -2,9 +2,10 @@
 # 部署前只需要改标了【改】的两处，详见《部署说明.md》
 services:
   liuli-obs:
+    # 镜像在服务器上从源码构建。不要加 image: 字段——1Panel 创建编排时会拿 image 的名字去仓库拉取，
+    # 本地构建的镜像仓库里没有，会报「拉取镜像失败」
     build: .
-    image: liuli-obs:latest
-    # 自建镜像必须写这一行，否则 1Panel 会去镜像仓库拉取而失败
+    # 自建镜像必须写这一行，否则 compose 会去镜像仓库拉取而失败
     pull_policy: build
     container_name: liuli-obs
     restart: unless-stopped
