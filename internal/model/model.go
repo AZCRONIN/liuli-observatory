@@ -50,6 +50,10 @@ type Settings struct {
 	SelfHosts []string `json:"self_hosts"`
 	// BanWhitelist 是永远不允许封禁的 IP / 网段（在「封禁 IP」页编辑）
 	BanWhitelist []string `json:"ban_whitelist"`
+	// AutoOnboard 为 true 时，自动把 1Panel 里新建（或日志开关被重新打开）的网站的 access_log 切到 liuli_json
+	AutoOnboard bool `json:"auto_onboard"`
+	// OnboardSkip 是撤销过接入的网站 ID（程序维护），自动接入时跳过
+	OnboardSkip []uint `json:"onboard_skip"`
 }
 
 // PVRules 是浏览量的排除规则。
@@ -78,6 +82,7 @@ func DefaultSettings() Settings {
 		SlowThresholdMs:     1000,
 		IPSource:            "remote_addr",
 		AutoAddSites:        true,
+		AutoOnboard:         true,
 	}
 }
 

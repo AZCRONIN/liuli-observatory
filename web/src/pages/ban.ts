@@ -80,7 +80,7 @@ export const banPage = {
                     : s.panel_ok ? `已连接${s.last_reload ? `，上次重载 ${ago(s.last_reload)}` : ''}` : s.panel_error));
             items.push(check(s.include_ok, 'OpenResty 已加载规则文件',
                 s.include_ok ? h('span', null, '已在 nginx.conf 里找到：', h('code', { class: 'mono' }, s.include_line))
-                    : h('span', null, '在 1Panel「网站」→「设置」→「配置修改」里，把下面这一行加到 http { 里面（例如紧挨着 include conf.d 那几行），保存后点「重新同步」：', h('br'), copyable(s.include_line))));
+                    : h('span', null, '到「设置 → OpenResty 接入」点「一键接入」自动加上；或者在 1Panel「网站」→「设置」→「配置修改」里手动把下面这一行加到 http { 里面，保存后点「重新同步」：', h('br'), copyable(s.include_line), ' ', h('a', { href: '#/settings', class: 'btn sm primary' }, '去一键接入'))));
             statusBox.replaceChildren(h('div', { class: 'checks' }, items),
                 s.last_error && s.include_ok ? h('div', { class: 'err-line', style: { marginTop: '12px' } }, s.last_error) : '');
         };

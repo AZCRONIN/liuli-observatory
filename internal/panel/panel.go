@@ -152,3 +152,38 @@ func (c *Client) NginxConf(ctx context.Context) (string, error) {
 func (c *Client) Reload(ctx context.Context, installID uint) error {
 	return c.do(ctx, http.MethodPost, "/api/v2/apps/installed/op", map[string]any{"installId": installID, "operate": "reload"}, nil)
 }
+
+// SaveNginxConf 保存 nginx.conf。1Panel 会先备份（backup=true）、写入后执行 nginx -t，不通过就自动改回原内容，通过则重载。
+func (c *Client) SaveNginxConf(ctx context.Context, content string) error {
+	return c.do(ctx, http.MethodPost, "/api/v2/openresty/file", map[string]any{"content": content, "backup": true}, nil)
+}
+
+// Website 是 1Panel 里的一个网站。
+type Website struct {
+	ID            uint   `json:"id"`
+	PrimaryDomain string `json:"primaryDomain"`
+	Alias         string `json:"alias"` // 网站目录名，日志在 /www/sites/<alias>/log/
+	Type          string `json:"type"`  // proxy / static / runtime / deployment / stream …
+	AccessLog     bool   `json:"accessLog"`
+}
+
+// Websites 列出 1Panel 里的所有网站。
+func (c *Client) Websites(ctx context.Context) ([]Website, error) {
+	var ws []Website
+	err := c.do(ctx, http.MethodGet, "/api/v2/websites/list", nil, &ws)
+	return ws, err
+}
+
+// SiteConf 读取网站的 OpenResty 配置文件内容。
+func (c *Client) SiteConf(ctx context.Context, id uint) (string, error) {
+	var f struct {
+		Content string `json:"content"`
+	}
+	err := c.do(ctx, http.MethodGet, "/api/v2/websites/"+strconv.FormatUint(uint64(id), 10)+"/config/openresty", nil, &f)
+	return f.Content, err
+}
+
+// SaveSiteConf 保存网站的配置文件。1Panel 写入后执行 nginx -t，不通过就自动改回原内容，通过则重载。
+func (c *Client) SaveSiteConf(ctx context.Context, id uint, content string) error {
+	return c.do(ctx, http.MethodPost, "/api/v2/websites/nginx/update", map[string]any{"id": id, "content": content}, nil)
+}

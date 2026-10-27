@@ -18,6 +18,7 @@ import (
 	"liuliobs/internal/classify"
 	"liuliobs/internal/ingest"
 	"liuliobs/internal/model"
+	"liuliobs/internal/onboard"
 	"liuliobs/internal/store"
 )
 
@@ -36,8 +37,10 @@ type API struct {
 	Mgr   *ingest.Manager
 	Class *classify.Classifier
 	Ban   *ban.Manager
-	UI    fs.FS
-	lim   *limiter
+	// Onboard 是「一键接入」（通过 1Panel API 配置日志格式和封禁规则）
+	Onboard *onboard.Manager
+	UI      fs.FS
+	lim     *limiter
 }
 
 // New 创建 API。
@@ -76,6 +79,10 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("DELETE /api/bans", auth(a.banRemove))
 	mux.Handle("POST /api/bans/sync", auth(a.banSync))
 	mux.Handle("PUT /api/bans/whitelist", auth(a.banWhitelist))
+	mux.Handle("GET /api/onboard", auth(a.onboardStatus))
+	mux.Handle("POST /api/onboard/plan", auth(a.onboardPlan))
+	mux.Handle("POST /api/onboard/apply", auth(a.onboardApply))
+	mux.Handle("POST /api/onboard/undo", auth(a.onboardUndo))
 	// 多台模式：Agent → Hub 推送（Bearer Token 鉴权，按 (server_id, site, minute) 幂等），第二版实现
 	mux.HandleFunc("POST /api/push", a.notYet)
 
@@ -614,7 +621,7 @@ func (a *API) putSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	old := a.Store.Settings()
 	// 这两项由程序维护，设置页提交的内容里没有
-	st.IgnoredLogs, st.SelfHosts, st.BanWhitelist = old.IgnoredLogs, old.SelfHosts, old.BanWhitelist
+	st.IgnoredLogs, st.SelfHosts, st.BanWhitelist, st.OnboardSkip = old.IgnoredLogs, old.SelfHosts, old.BanWhitelist, old.OnboardSkip
 	if err := a.Store.SaveSettings(st); err != nil {
 		writeErr(w, 500, err.Error())
 		return

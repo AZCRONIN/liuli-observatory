@@ -36,6 +36,7 @@
 - **状态码**：分布、趋势，点进去看明细
 - **错误日志 / 慢请求**：4xx/5xx 和慢请求明细，可按 IP、URI、蜘蛛筛选
 - **封禁 IP**：在 IP 列表、错误日志里一键封禁 / 解封，支持网段和到期自动解封、白名单，统计每个封禁 IP 被拦截的次数（生成 OpenResty deny 规则，通过 1Panel API 平滑重载）
+- **一键接入**（1Panel）：通过 1Panel API 自动给 OpenResty 加上日志格式、把各网站切到 JSON 日志，新建的网站自动接入；每处修改都由 1Panel 执行 `nginx -t` 检查、失败自动回滚，可一键撤销
 - 浅色 / 暗色两套主题，手机上也能看
 - 单管理员登录（bcrypt、HttpOnly Cookie、登录限流），严格的 CSP 等安全响应头，日志目录只读挂载；容器根文件系统只读、去掉所有特权、以普通用户运行
 
@@ -80,6 +81,8 @@ log_format liuli_json escape=json '{'
 
 再把各站点的 `access_log ... main;` 改成 `access_log ... liuli_json;`。默认的 combined / main 格式也能读，只是没有耗时数据。
 
+> 用 1Panel 的话这一步可以跳过：部署后连上 1Panel API，在「设置 → OpenResty 接入」点一次「一键接入」，日志格式、各网站的 access_log 和封禁规则都会自动配好，以后新建的网站也会自动接入（见[部署说明第 7 步](部署说明.md#第-7-步连接-1panel-api一键接入推荐)）。
+
 **2. 部署**
 
 ```bash
@@ -109,7 +112,7 @@ docker compose -p liuli-obs up -d --build
 | `LIULI_1PANEL_API_KEY` | 空 | 1Panel API 密钥，用于封禁后重载 OpenResty。不填则封禁只写文件 |
 | `LIULI_IPV4` | 空 | 观测台在 1panel-network 里的固定 IP，给 API 密钥的 IP 白名单用 |
 
-封禁 IP 的配置步骤和安全说明见 [部署说明 · 封禁 IP](部署说明.md#封禁-ip可选)。
+1Panel API 的配置步骤和安全说明见 [部署说明第 7 步](部署说明.md#第-7-步连接-1panel-api一键接入推荐)。
 
 统计规则（PV 排除规则、明细保留天数、慢请求阈值、真实 IP 取法、自动添加站点）在网页「设置」里改。
 

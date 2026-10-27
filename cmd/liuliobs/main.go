@@ -26,6 +26,7 @@ import (
 	"liuliobs/internal/classify"
 	"liuliobs/internal/ingest"
 	"liuliobs/internal/model"
+	"liuliobs/internal/onboard"
 	"liuliobs/internal/panel"
 	"liuliobs/internal/store"
 	"liuliobs/web"
@@ -133,6 +134,9 @@ func main() {
 	a := api.New(api.Config{Mode: mode, ServerID: serverID, CookieSecure: env("LIULI_COOKIE_SECURE", "1") != "0",
 		LogRoot: env("LIULI_LOG_ROOT", "/logs")}, st, mgr, cls, ui)
 	a.Ban = banMgr
+	onb := &onboard.Manager{Store: st, Panel: banMgr.Panel, Ban: banMgr, LogRoot: env("LIULI_LOG_ROOT", "/logs")}
+	a.Onboard = onb
+	go onb.Run(ctx)
 	srv := &http.Server{Addr: listen, Handler: a.Handler(), ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout: 30 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 120 * time.Second}
 	go func() {

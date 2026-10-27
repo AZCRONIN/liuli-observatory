@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS bans(
 
 // migrations 是建表之后追加的列。
 var migrations = []string{
+	onboardSchema,
 	`ALTER TABLE bans ADD COLUMN removed INTEGER NOT NULL DEFAULT 0`, // 解封时间（手动解封或到期）
 }
 

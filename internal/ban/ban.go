@@ -215,7 +215,7 @@ func (m *Manager) Sync(ctx context.Context, force bool) error {
 	m.st.PanelOK, m.st.PanelError = true, ""
 	m.install = info.AppInstallID
 	if conf, err := m.Panel.NginxConf(cctx); err == nil {
-		m.st.IncludeOK = hasInclude(conf, m.IncludePath)
+		m.st.IncludeOK = HasInclude(conf, m.IncludePath)
 	}
 	if changed || force {
 		if err := m.Panel.Reload(cctx, m.install); err != nil {
@@ -262,8 +262,8 @@ func (m *Manager) Run(ctx context.Context) {
 	}
 }
 
-// hasInclude 检查 nginx.conf 里有没有（未被注释的）include 能匹配到规则文件。
-func hasInclude(conf, includePath string) bool {
+// HasInclude 检查 nginx.conf 里有没有（未被注释的）include 能匹配到规则文件。
+func HasInclude(conf, includePath string) bool {
 	dir := filepath.ToSlash(filepath.Dir(includePath))
 	for _, line := range strings.Split(conf, "\n") {
 		l := strings.TrimSpace(line)

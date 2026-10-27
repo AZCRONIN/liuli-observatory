@@ -61,7 +61,7 @@ func TestHasInclude(t *testing.T) {
 		"http {\n  include /www/other/*.conf;\n}":        false,
 	}
 	for conf, want := range cases {
-		if got := hasInclude(conf, p); got != want {
+		if got := HasInclude(conf, p); got != want {
 			t.Errorf("%q：期望 %v", conf, want)
 		}
 	}
