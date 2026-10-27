@@ -171,6 +171,12 @@ type Website struct {
 func (c *Client) Websites(ctx context.Context) ([]Website, error) {
 	var ws []Website
 	err := c.do(ctx, http.MethodGet, "/api/v2/websites/list", nil, &ws)
+	// 1Panel 的主域名可能带端口（例如 img.example.com:443），去掉端口只留域名
+	for i := range ws {
+		if h, _, ok := strings.Cut(ws[i].PrimaryDomain, ":"); ok && !strings.Contains(ws[i].PrimaryDomain, "]") && strings.Count(ws[i].PrimaryDomain, ":") == 1 {
+			ws[i].PrimaryDomain = h
+		}
+	}
 	return ws, err
 }
 
