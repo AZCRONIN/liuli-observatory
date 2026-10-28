@@ -28,6 +28,16 @@ BOT = re.compile(r"bot|spider|crawl|scan|fetch|monitor|preview|slurp|yeti/|yande
 # 宝塔「蜘蛛」只算这些搜索引擎
 SEARCH = re.compile(r"baiduspider|googlebot|bingbot|msnbot|sogou|360spider|haosouspider|yisouspider|bytespider|"
                     r"petalbot|yandex|applebot|duckduckbot|slurp", re.I)
+# 和观测台一致：浏览器 / App 后台自动请求的文件不算访客、不算浏览量
+BG = {"sw.js", "service-worker.js", "serviceworker.js", "firebase-messaging-sw.js", "ngsw-worker.js",
+      "robots.txt", "browserconfig.xml", "manifest.json"}
+
+
+def background(path):
+    base = path.rsplit("/", 1)[-1].lower()
+    return base in BG or base.startswith(("favicon", "apple-touch-icon")) or base.endswith(".webmanifest")
+
+
 COMBINED = re.compile(r'^(\S+) \S+ \S+ \[([^\]]+)\] "((?:[^"\\]|\\.)*)" (\d{3}) (\d+|-) "((?:[^"\\]|\\.)*)" "((?:[^"\\]|\\.)*)"')
 
 
@@ -77,8 +87,10 @@ def main():
                     continue
                 human_ips.add(ip)
                 human_ip_req[ip] += 1
-                uv.add((ip, ua))
                 path = uri.split("?")[0].split("#")[0] or "/"
+                if background(path):
+                    continue
+                uv.add((ip, ua))
                 last = path.rsplit("/", 1)[-1]
                 ext = last.rsplit(".", 1)[1].lower() if "." in last else ""
                 if (method == "GET" and 200 <= st < 400 and ext not in STATIC

@@ -124,7 +124,7 @@ docker compose -p liuli-obs up -d --build
 |---|---|
 | 请求 | 所有日志行 |
 | 浏览量 PV | 非蜘蛛、2xx/3xx、GET、页面类请求（排除静态资源扩展名、`/api/` 等前缀、`/robots.txt` 等路径，可配置） |
-| 访客 UV | 当天按（IP + UA）去重，不含蜘蛛；多天为每天之和 |
+| 访客 UV | 当天按（IP + UA）去重，不含蜘蛛；只请求过 sw.js、favicon、apple-touch-icon、webmanifest、robots.txt 这类浏览器后台文件的不算（App 内置浏览器拉这些文件常换 UA，会把一个人算成好几个）；多天为每天之和 |
 | IP 数 | 当天去重 IP（含蜘蛛）；多天为每天之和 |
 | 流量 | `bytes_sent` 之和（出站） |
 | 蜘蛛爬虫 | UA 命中已知蜘蛛 / 机器人列表：搜索引擎、AI 爬虫、SEO 工具、社交预览、脚本工具、空 UA |

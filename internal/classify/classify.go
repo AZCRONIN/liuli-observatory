@@ -56,7 +56,24 @@ func (c *Classifier) Enrich(r *model.Record) {
 	r.Country, r.Province, r.City, r.ISP = c.Geo.Lookup(r.IP)
 	r.RefHost = refHost(r.Referer, r.Site)
 	r.IsPV = c.IsPV(r)
-	r.Visitor = VisitorHash(r.IP, r.UA)
+	r.Visitor = 0
+	if !Background(r.Path) {
+		r.Visitor = VisitorHash(r.IP, r.UA)
+	}
+}
+
+// Background 判断是不是浏览器 / App 在后台自动请求的文件（Service Worker、网站图标、PWA 清单、robots.txt）。
+// 这类请求常带着和页面请求不同的 UA（例如 App 内置浏览器打开页面，系统 WebView 去拉 sw.js、App 本身去拉 favicon），
+// 按 IP + UA 去重会把一个人算成好几个访客，所以只请求过这些文件的不算访客（Visitor 记 0），也不算浏览量。
+func Background(p string) bool {
+	base := strings.ToLower(path.Base(p))
+	switch base {
+	case "sw.js", "service-worker.js", "serviceworker.js", "firebase-messaging-sw.js", "ngsw-worker.js",
+		"robots.txt", "browserconfig.xml", "manifest.json":
+		return true
+	}
+	return strings.HasPrefix(base, "favicon") || strings.HasPrefix(base, "apple-touch-icon") ||
+		strings.HasSuffix(base, ".webmanifest")
 }
 
 // IsPV 按口径判断：非蜘蛛、2xx/3xx、GET、页面类请求。
@@ -74,7 +91,7 @@ func (c *Classifier) IsPV(r *model.Record) bool {
 func (c *Classifier) IsPage(p string) bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	if c.exact[p] {
+	if c.exact[p] || Background(p) {
 		return false
 	}
 	for _, pre := range c.pref {
@@ -88,13 +105,16 @@ func (c *Classifier) IsPage(p string) bool {
 	return true
 }
 
-// VisitorHash 是访客（IP + UA）的 64 位哈希。
+// VisitorHash 是访客（IP + UA）的 64 位哈希，不会是 0（0 表示「不算访客」）。
 func VisitorHash(ip, ua string) int64 {
 	h := fnv.New64a()
 	h.Write([]byte(ip))
 	h.Write([]byte{0})
 	h.Write([]byte(ua))
-	return int64(h.Sum64() >> 1)
+	if v := int64(h.Sum64() >> 1); v != 0 {
+		return v
+	}
+	return 1
 }
 
 // refHost 取来源域名；站内跳转（同域或子域）和直接访问返回空串。

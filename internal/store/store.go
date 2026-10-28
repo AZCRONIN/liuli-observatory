@@ -280,7 +280,7 @@ func (s *Store) NextDay(dayTS int64) int64 {
 }
 
 const aggCols = `COUNT(*), COALESCE(SUM(is_pv),0),
-	COUNT(DISTINCT CASE WHEN spider='' THEN visitor END), COUNT(DISTINCT ip),
+	COUNT(DISTINCT CASE WHEN spider='' AND visitor<>0 THEN visitor END), COUNT(DISTINCT ip),
 	COALESCE(SUM(bytes),0), COALESCE(SUM(req_len),0), COALESCE(SUM(spider<>''),0),
 	COALESCE(SUM(CASE WHEN rt>=0 THEN rt ELSE 0 END),0), COALESCE(SUM(rt>=0),0),
 	COALESCE(SUM(status BETWEEN 200 AND 299),0), COALESCE(SUM(status BETWEEN 300 AND 399),0),
@@ -494,4 +494,66 @@ func (s *Store) Reclassify(isPV func(method string, status int, path, spider str
 		return 0, err
 	}
 	return int64(len(ups)), s.Rollup(time.Now())
+}
+
+// ClearBackground 一次性修正旧版本入库的明细：后台自动请求（bg 返回 true 的路径）不算访客、不算浏览量，
+// 并重算受影响的汇总和维度日表。做过一次后记在 settings 里，以后启动直接跳过。
+func (s *Store) ClearBackground(bg func(path string) bool) (int64, error) {
+	var done string
+	if s.DB.QueryRow(`SELECT v FROM settings WHERE k='mig_bg_visitor'`).Scan(&done) == nil {
+		return 0, nil
+	}
+	type key struct {
+		srv, site string
+		hour      int64
+	}
+	rows, err := s.DB.Query(`SELECT id, server_id, site, ts, path FROM req WHERE visitor<>0 OR is_pv<>0`)
+	if err != nil {
+		return 0, err
+	}
+	var ids []int64
+	hours := map[key]bool{}
+	for rows.Next() {
+		var id, ts int64
+		var k key
+		var p string
+		if err := rows.Scan(&id, &k.srv, &k.site, &ts, &p); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		if bg(p) {
+			ids = append(ids, id)
+			k.hour = ts / 3600 * 3600
+			hours[k] = true
+		}
+	}
+	rows.Close()
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	for _, id := range ids {
+		if _, err := tx.Exec(`UPDATE req SET visitor=0, is_pv=0 WHERE id=?`, id); err != nil {
+			return 0, err
+		}
+	}
+	for k := range hours {
+		if _, err := tx.Exec(`INSERT OR REPLACE INTO dirty(server_id, site, hour) VALUES(?,?,?)`, k.srv, k.site, k.hour); err != nil {
+			return 0, err
+		}
+	}
+	if len(ids) > 0 {
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO dim_pending(server_id, site, ts) SELECT DISTINCT server_id, site, ts FROM dim_day
+			WHERE ts>=(SELECT COALESCE(MIN(ts),0) FROM req)`); err != nil {
+			return 0, err
+		}
+	}
+	if _, err := tx.Exec(`INSERT OR REPLACE INTO settings(k,v) VALUES('mig_bg_visitor','1')`); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return int64(len(ids)), s.Rollup(time.Now())
 }

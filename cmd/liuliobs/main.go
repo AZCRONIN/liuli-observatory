@@ -70,6 +70,11 @@ func main() {
 	}
 	defer st.Close()
 	st.EnsureServer(serverID, env("LIULI_SERVER_NAME", serverID))
+	if n, err := st.ClearBackground(classify.Background); err != nil {
+		log.Printf("修正后台请求的访客口径失败: %v", err)
+	} else if n > 0 {
+		log.Printf("已修正 %d 条后台请求（sw.js、favicon 等）的访客口径", n)
+	}
 
 	// 首次启动：管理员账号
 	user := env("LIULI_ADMIN_USER", "admin")

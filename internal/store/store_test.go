@@ -83,3 +83,34 @@ func TestAggregatesMatchLive(t *testing.T) {
 		t.Fatal("没有保存跟读进度")
 	}
 }
+
+// 旧版本入库的后台请求（sw.js 等）修正后不算访客、不算浏览量，汇总随之重算；只做一次
+func TestClearBackground(t *testing.T) {
+	s := testStore(t)
+	now := time.Now()
+	ts := s.DayStart(now) - 3600
+	recs := []model.Record{
+		{Site: "a.com", TS: ts, IP: "1.1.1.1", Method: "GET", Path: "/", Status: 200, URT: -1, IsPV: true, Visitor: 11},
+		{Site: "a.com", TS: ts + 1, IP: "1.1.1.1", Method: "GET", Path: "/sw.js", Status: 200, URT: -1, Visitor: 12},
+		{Site: "a.com", TS: ts + 2, IP: "1.1.1.1", Method: "GET", Path: "/manifest.webmanifest", Status: 200, URT: -1, IsPV: true, Visitor: 13},
+	}
+	if err := s.InsertBatch("local", recs, &tail.State{Path: "/x"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Rollup(now); err != nil {
+		t.Fatal(err)
+	}
+	bg := func(p string) bool { return p == "/sw.js" || p == "/manifest.webmanifest" }
+	n, err := s.ClearBackground(bg)
+	if err != nil || n != 2 {
+		t.Fatalf("修正了 %d 条，err=%v", n, err)
+	}
+	f := Filter{Site: "a.com", From: s.DayStart(now.AddDate(0, 0, -1)), To: s.DayStart(now)}
+	days, _ := s.TotalsDays(f)
+	if days.UV != 1 || days.PV != 1 || days.Req != 3 {
+		t.Fatalf("修正后 %+v", days)
+	}
+	if n, _ := s.ClearBackground(bg); n != 0 {
+		t.Fatal("不应重复修正")
+	}
+}

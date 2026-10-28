@@ -227,7 +227,7 @@ func liveDim(q querier, f Filter, d string, limit int) ([]DimRow, error) {
 		w += " AND " + cond
 	}
 	sqlq := `SELECT ` + key + ` k, ` + extra + `, COUNT(*) c, COALESCE(SUM(is_pv),0),
-		COUNT(DISTINCT CASE WHEN spider='' THEN visitor END), COALESCE(SUM(bytes),0), MAX(ts)
+		COUNT(DISTINCT CASE WHEN spider='' AND visitor<>0 THEN visitor END), COALESCE(SUM(bytes),0), MAX(ts)
 		FROM req WHERE ` + w + ` GROUP BY k ORDER BY c DESC`
 	if limit > 0 {
 		sqlq += ` LIMIT ` + strconv.Itoa(limit)
@@ -446,10 +446,10 @@ func (s *Store) Active(serverID, site string, now time.Time) (int64, []int64, er
 	f := Filter{ServerID: serverID, Site: site, From: end - 600, To: end}
 	w, args := f.where("")
 	var total int64
-	if err := s.DB.QueryRow(`SELECT COUNT(DISTINCT visitor) FROM req WHERE `+w+` AND spider=''`, args...).Scan(&total); err != nil {
+	if err := s.DB.QueryRow(`SELECT COUNT(DISTINCT visitor) FROM req WHERE `+w+` AND spider='' AND visitor<>0`, args...).Scan(&total); err != nil {
 		return 0, nil, err
 	}
-	rows, err := s.DB.Query(`SELECT ts/60*60 b, COUNT(DISTINCT visitor) FROM req WHERE `+w+` AND spider='' GROUP BY b`, args...)
+	rows, err := s.DB.Query(`SELECT ts/60*60 b, COUNT(DISTINCT visitor) FROM req WHERE `+w+` AND spider='' AND visitor<>0 GROUP BY b`, args...)
 	if err != nil {
 		return 0, nil, err
 	}

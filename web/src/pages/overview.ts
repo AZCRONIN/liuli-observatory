@@ -8,12 +8,12 @@ import { bytes, bytesParts, esc, h, hm, md, ms, num, tip, time } from '../util';
 // 指标口径：和需求说明第 5 节一致，问号提示里写清楚
 export const METRIC_TIPS = {
     pv: '浏览量：非蜘蛛、状态码 2xx/3xx、GET 方式的页面类请求。排除 js/css/图片/字体/视频等静态资源，以及 /api/ 等接口路径（规则可在「设置」里改）。',
-    uv: '访客：按（IP + 浏览器 UA）去重的访客数，不含蜘蛛。多天时为每天去重数之和。',
+    uv: '访客：按（IP + 浏览器 UA）去重的访客数，不含蜘蛛；只请求过 sw.js、favicon 等浏览器后台文件的不算。多天时为每天去重数之和。',
     ip: 'IP 数：去重的来源 IP 数（含蜘蛛）。多天时为每天去重数之和。',
     req: '请求：所有日志行，包括静态资源、接口、蜘蛛和错误请求。',
     bytes: '流量：响应发给访客的字节数之和（bytes_sent，出站）。',
     spider: '蜘蛛爬虫：浏览器 UA 命中已知蜘蛛 / 机器人列表的请求数，包括搜索引擎、AI 爬虫、SEO 工具、脚本工具和空 UA。',
-    active: '最近 10 分钟的去重访客数（IP + UA，不含蜘蛛）。下方小柱是每分钟的访客数。',
+    active: '最近 10 分钟的去重访客数（IP + UA，不含蜘蛛和 sw.js、favicon 等后台请求）。下方小柱是每分钟的访客数。',
 };
 
 type MetricKey = 'pv' | 'uv' | 'ip' | 'bytes' | 'req' | 'spider';

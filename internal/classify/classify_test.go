@@ -62,3 +62,21 @@ func TestRefHost(t *testing.T) {
 		t.Fatal("来源域名不对")
 	}
 }
+
+func TestBackground(t *testing.T) {
+	for _, p := range []string{"/sw.js", "/static/service-worker.js", "/favicon.ico", "/favicon-32x32.png",
+		"/apple-touch-icon-120x120-precomposed.png", "/manifest.webmanifest", "/site.webmanifest", "/robots.txt"} {
+		if !Background(p) {
+			t.Errorf("%s 应是后台请求", p)
+		}
+	}
+	for _, p := range []string{"/", "/s/abc.html", "/static/js/app.js", "/api/search", "/news/sw"} {
+		if Background(p) {
+			t.Errorf("%s 不应是后台请求", p)
+		}
+	}
+	c := New(nil, model.DefaultSettings().PV)
+	if c.IsPage("/manifest.webmanifest") {
+		t.Error("webmanifest 不应算页面")
+	}
+}
